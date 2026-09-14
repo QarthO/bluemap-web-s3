@@ -1,10 +1,23 @@
 #!/bin/sh
 set -eu
 
+# Included only in the settings.json location.
+: > /etc/nginx/bluemap-settings.conf
+
 # A mounted file is authoritative; a directory mount also supports atomic replacements.
 if [ -e /config/settings.json ]; then
   jq -e 'type == "object" and (.maps | type == "array")' /config/settings.json > /dev/null
   ln -sf /config/settings.json /usr/share/nginx/html/settings.json
+  exit 0
+fi
+
+# Let the browser fetch server-published settings directly from the CDN.
+if [ -n "${SETTINGS_URL:-}" ]; then
+  printf '%s' "$SETTINGS_URL" | grep -Eq '^https?://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~%/-]*)?$' || {
+    echo "SETTINGS_URL must be a public HTTP(S) URL without credentials, queries or fragments" >&2
+    exit 1
+  }
+  printf 'return 302 "%s";\n' "$SETTINGS_URL" > /etc/nginx/bluemap-settings.conf
   exit 0
 fi
 

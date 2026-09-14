@@ -1,9 +1,10 @@
 services:
   bluemap:
-    build: .
+    build: ./webapp
     ports:
       - "8080:8080"
     environment:
+      SETTINGS_URL: ${SETTINGS_URL:-}
       MAP_DATA_ROOT: ${MAP_DATA_ROOT:-}
       MAP_IDS: ${MAP_IDS:-}
       LIVE_DATA_ROOT: ${LIVE_DATA_ROOT:-}

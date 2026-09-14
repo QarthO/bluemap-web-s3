@@ -1,0 +1,19 @@
+name: Check
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: mvn -B -f addon/pom.xml verify
+      - run: docker build -t bluemap-web ./webapp
+      - run: docker compose config --quiet
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bluemap-s3
+          path: addon/target/bluemap-s3-*.jar

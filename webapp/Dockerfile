@@ -15,4 +15,4 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --chmod=755 configure.sh /docker-entrypoint.d/40-bluemap.sh
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
-    CMD wget -q -O /dev/null http://127.0.0.1:8080/settings.json || exit 1
+    CMD wget -q -O /dev/null http://127.0.0.1:8080/index.html || exit 1
