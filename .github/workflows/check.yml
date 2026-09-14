@@ -13,7 +13,14 @@ jobs:
       - run: mvn -B -f addon/pom.xml verify
       - run: docker build -t bluemap-web ./webapp
       - run: docker compose config --quiet
-      - uses: actions/upload-artifact@v4
+      - name: Name jar with commit SHA
+        id: jar
+        run: |
+          artifact_path="addon/target/bluemap-s3-$(git rev-parse --short=7 HEAD).jar"
+          mv addon/target/bluemap-s3-*.jar "$artifact_path"
+          echo "path=$artifact_path" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
         with:
-          name: bluemap-s3
-          path: addon/target/bluemap-s3-*.jar
+          path: ${{ steps.jar.outputs.path }}
+          archive: false
+          if-no-files-found: error
