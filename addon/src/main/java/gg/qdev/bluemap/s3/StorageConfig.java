@@ -24,6 +24,7 @@ public final class StorageConfig
   private boolean forcePathStyle = true;
   private String rootPath = "";
   private String publicUrl = "";
+  private String renderStatePath = "bluemap/rstate";
 
   @Override
   public Storage createStorage() throws ConfigurationException {
@@ -31,6 +32,8 @@ public final class StorageConfig
       if (region.isBlank() || accessKeyId.isBlank() || secretAccessKey.isBlank())
         throw new IllegalArgumentException(
             "region, access-key-id and secret-access-key are required");
+      if (renderStatePath.isBlank())
+        throw new IllegalArgumentException("render-state-path is required");
       var publicRoot = java.net.URI.create(publicUrl);
       if (!("https".equals(publicRoot.getScheme()) || "http".equals(publicRoot.getScheme()))
           || publicRoot.getHost() == null
@@ -53,7 +56,15 @@ public final class StorageConfig
               sessionToken,
               forcePathStyle),
           prefix.isEmpty() ? "" : prefix + "/",
-          publicUrl.replaceAll("/+$", ""));
+          publicUrl.replaceAll("/+$", ""),
+          java.nio.file.Path.of(renderStatePath)
+              .resolve(
+                  java.util
+                      .UUID
+                      .nameUUIDFromBytes(
+                          (endpointUrl + "\n" + bucketName + "\n" + prefix)
+                              .getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                      .toString()));
     } catch (IllegalArgumentException e) {
       throw new ConfigurationException(e.getMessage());
     }

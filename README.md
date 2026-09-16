@@ -33,6 +33,8 @@ write-markers-interval: 10
 write-players-interval: 10
 ```
 
+Render state stays on the Minecraft server in `bluemap/rstate/`; keep this directory persistent and backed up. Existing S3 render state imports automatically on first use. Tiles stay in S3.
+
 Restart Minecraft. Copy `.env.example` to `.env`; set `SETTINGS_URL=https://cdn.example.com/settings.json`, then `docker compose up -d --build`. Open `http://localhost:8080`.
 
 R2 CORS:

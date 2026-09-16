@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test;
  * Opt-in contract test against a real S3-compatible bucket; deletes only its unique test prefix.
  */
 class R2IntegrationTest {
+  @org.junit.jupiter.api.io.TempDir java.nio.file.Path temporary;
+
   @Test
   void realBucketRoundTrip() throws Exception {
     assumeTrue(System.getenv("S3_TEST_ENDPOINT") != null);
@@ -24,7 +26,7 @@ class R2IntegrationTest {
             "",
             true);
     String prefix = "contract-test-" + UUID.randomUUID() + "/";
-    var storage = new S3Storage(client, prefix, "https://cdn.example.com/" + prefix);
+    var storage = new S3Storage(client, prefix, "https://cdn.example.com/" + prefix, temporary);
     try {
       storage.initialize();
       var map = storage.map("custom_world");

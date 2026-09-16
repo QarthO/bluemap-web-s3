@@ -3,6 +3,7 @@ package gg.qdev.bluemap.s3;
 import de.bluecolored.bluemap.core.storage.*;
 import de.bluecolored.bluemap.core.storage.compression.*;
 import java.io.*;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.DoublePredicate;
@@ -13,13 +14,15 @@ final class S3Storage implements Storage {
   final S3Client client;
   final String prefix, publicUrl;
   private final Map<String, S3Map> maps = new ConcurrentHashMap<>();
+  private final Path renderStatePath;
   private volatile boolean closed;
   private ScheduledExecutorService publisher;
 
-  S3Storage(S3Client client, String prefix, String publicUrl) {
+  S3Storage(S3Client client, String prefix, String publicUrl, Path renderStatePath) {
     this.client = client;
     this.prefix = prefix;
     this.publicUrl = publicUrl;
+    this.renderStatePath = renderStatePath;
   }
 
   @Override
@@ -68,7 +71,7 @@ final class S3Storage implements Storage {
     publisher.scheduleWithFixedDelay(task, 0, 10, TimeUnit.SECONDS);
   }
 
-  private void ensureOpen() throws IOException {
+  void ensureOpen() throws IOException {
     if (closed) throw new IOException("S3 storage is closed");
   }
 
@@ -214,9 +217,11 @@ final class S3Storage implements Storage {
 
   final class S3Map implements MapStorage {
     final String root;
+    final LocalRenderState state;
 
     S3Map(String id) {
       root = prefix + id + "/";
+      state = new LocalRenderState(S3Storage.this, root + "rstate/", renderStatePath.resolve(id));
     }
 
     S3Storage owner() {
@@ -235,12 +240,12 @@ final class S3Storage implements Storage {
 
     @Override
     public GridStorage tileState() {
-      return new Grid(root + "rstate", ".tiles.dat", Compression.GZIP);
+      return state.tiles;
     }
 
     @Override
     public GridStorage chunkState() {
-      return new Grid(root + "rstate", ".chunks.dat", Compression.GZIP);
+      return state.chunks;
     }
 
     @Override
@@ -296,6 +301,7 @@ final class S3Storage implements Storage {
       } catch (UncheckedIOException e) {
         throw e.getCause();
       }
+      state.delete();
       progress.test(1);
     }
   }

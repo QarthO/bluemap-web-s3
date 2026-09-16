@@ -130,7 +130,7 @@ class S3Test {
 
   @Test
   void roundTripCompressionAndMapScopedDeletion() throws Exception {
-    var storage = new S3Storage(client, "test/", "https://cdn.example.com/test");
+    var storage = new S3Storage(client, "test/", "https://cdn.example.com/test", temporary);
     storage.initialize();
     var a = storage.map("custom_world");
     var sibling = storage.map("custom_world_2");
@@ -163,6 +163,89 @@ class S3Test {
     assertTrue(client.exists("test/settings.json"));
     storage.close();
     assertThrows(java.io.IOException.class, () -> sibling.settings().read());
+  }
+
+  private byte[] gzip(String value) throws Exception {
+    var bytes = new java.io.ByteArrayOutputStream();
+    try (var out = Compression.GZIP.compress(bytes)) {
+      out.write(value.getBytes(StandardCharsets.UTF_8));
+    }
+    return bytes.toByteArray();
+  }
+
+  @Test
+  void importsBothGridsOnceAndKeepsStateLocalAcrossRestarts() throws Exception {
+    String tileKey = "test/world/rstate/" + S3Storage.gridPath(-123, 456) + ".tiles.dat";
+    String chunkKey = "test/world/rstate/" + S3Storage.gridPath(0, -1) + ".chunks.dat";
+    objects.put(tileKey, gzip("old tiles"));
+    objects.put(chunkKey, gzip("old chunks"));
+    objects.put("test/world/rstate/../../escape.tiles.dat", gzip("invalid"));
+    var storage = new S3Storage(client, "test/", "https://cdn.example.com", temporary);
+    var map = storage.map("world");
+    try (var in = map.tileState().read(-123, 456)) {
+      assertEquals("old tiles", new String(in.decompress().readAllBytes(), StandardCharsets.UTF_8));
+    }
+    assertEquals(3, requests.size()); // One LIST and two GETs; never download tile data.
+    requests.clear();
+    try (var out = map.tileState().write(-123, 456)) {
+      out.write("new tiles".getBytes());
+    }
+    try (var out = map.chunkState().cell(42, 0).write()) {
+      out.write("new chunks".getBytes());
+    }
+    try (var cells = map.chunkState().stream()) {
+      assertEquals(2, cells.count());
+    }
+    map.chunkState().delete(0, -1);
+    assertFalse(map.chunkState().exists(0, -1));
+    storage.close();
+    assertThrows(java.io.IOException.class, () -> map.tileState().read(-123, 456));
+    var restarted = new S3Storage(client, "test/", "https://cdn.example.com", temporary);
+    var restored = restarted.map("world");
+    try (var in = restored.tileState().read(-123, 456)) {
+      assertEquals("new tiles", new String(in.decompress().readAllBytes(), StandardCharsets.UTF_8));
+    }
+    assertFalse(restored.chunkState().exists(0, -1)); // Do not resurrect stale remote state.
+    assertTrue(requests.isEmpty());
+    assertArrayEquals(gzip("old tiles"), objects.get(tileKey)); // Import never modifies S3.
+    try (var out = restored.hiresTiles().write(1, 1)) {
+      out.write(1);
+    }
+    assertEquals(1, requests.size());
+    assertTrue(requests.get(0).startsWith("PUT test/world/tiles/"));
+    assertFalse(java.nio.file.Files.exists(temporary.resolve("world/tiles")));
+    restored.delete();
+    assertFalse(restored.tileState().exists(-123, 456));
+    restarted.close();
+    requests.clear();
+    var afterPurge = new S3Storage(client, "test/", "https://cdn.example.com", temporary);
+    assertFalse(afterPurge.map("world").chunkState().exists(42, 0));
+    assertTrue(requests.isEmpty());
+    afterPurge.close();
+  }
+
+  @Test
+  void interruptedImportBlocksWritesAndCanRetry() throws Exception {
+    String good = "test/world/rstate/x0/z0.chunks.dat";
+    String failed = "test/world/rstate/x0/z0.tiles.dat";
+    objects.put(good, gzip("chunks"));
+    objects.put(failed, gzip("tiles"));
+    server.createContext(
+        "/bucket/" + failed,
+        exchange -> {
+          exchange.sendResponseHeaders(403, -1);
+          exchange.close();
+        });
+    var storage = new S3Storage(client, "test/", "https://cdn.example.com", temporary);
+    assertThrows(java.io.IOException.class, () -> storage.map("world").tileState().write(0, 0));
+    assertFalse(java.nio.file.Files.exists(temporary.resolve("world/.s3-imported")));
+    assertTrue(requests.stream().noneMatch(r -> r.startsWith("PUT")));
+    server.removeContext("/bucket/" + failed);
+    try (var in = storage.map("world").tileState().read(0, 0)) {
+      assertEquals("tiles", new String(in.decompress().readAllBytes(), StandardCharsets.UTF_8));
+    }
+    assertTrue(java.nio.file.Files.exists(temporary.resolve("world/.s3-imported")));
+    storage.close();
   }
 
   @Test
