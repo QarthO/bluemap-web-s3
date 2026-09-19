@@ -4,33 +4,7 @@ set -eu
 # Included only in the settings.json location.
 : > /etc/nginx/bluemap-settings.conf
 
-# No redirect when the data root is local (avoids a /maps/ redirect loop).
-redirect_root() {
-  root="${1%/}"
-  destination="$2"
-  case "$root" in
-    http://*|https://*)
-      printf '%s' "$root" | grep -Eq '^https?://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~%/-]*)?$' || {
-        echo "Compatibility redirect roots must be public HTTP(S) URLs without credentials, queries or fragments" >&2
-        exit 1
-      }
-      printf 'return 302 "%s/$1$is_args$args";\n' "$root" > "$destination"
-      ;;
-    *) printf 'return 404;\n' > "$destination" ;;
-  esac
-}
-
-# The addon publishes settings.json directly alongside its map directories.
-if [ -e /config/settings.json ]; then
-  map_root="$(jq -r '.mapDataRoot // "maps"' /config/settings.json)"
-  live_root="$(jq -r '.liveDataRoot // .mapDataRoot // "maps"' /config/settings.json)"
-else
-  settings_url="${SETTINGS_URL:-}"
-  map_root="${MAP_DATA_ROOT:-${settings_url%/*}}"
-  live_root="${LIVE_DATA_ROOT:-$map_root}"
-fi
-redirect_root "$map_root" /etc/nginx/bluemap-maps.conf
-redirect_root "$live_root" /etc/nginx/bluemap-live.conf
+printf 'return 404;\n' > /etc/nginx/bluemap-maps.conf
 
 # A mounted file is authoritative; a directory mount also supports atomic replacements.
 if [ -e /config/settings.json ]; then
@@ -46,6 +20,7 @@ if [ -n "${SETTINGS_URL:-}" ]; then
     exit 1
   }
   printf 'return 302 "%s";\n' "$SETTINGS_URL" > /etc/nginx/bluemap-settings.conf
+  printf 'return 302 "%s/$1$is_args$args";\n' "${SETTINGS_URL%/*}" > /etc/nginx/bluemap-maps.conf
   exit 0
 fi
 

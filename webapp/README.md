@@ -2,7 +2,7 @@ Official checksum-pinned BlueMap 5.24 webapp in Nginx, without UI changes or loc
 
 `SETTINGS_URL` redirects `/settings.json` to the addon's public settings document. The browser downloads it directly; nothing is copied or cached in the container. No S3 credentials.
 
-Legacy `/maps/...` requests (MapLink) redirect to the CDN, preserving query strings. With `SETTINGS_URL`, the CDN root defaults to its parent directory; `MAP_DATA_ROOT` and `LIVE_DATA_ROOT` can override it. Mounted settings supply their own roots. Redirects are configured at container startup; restart after changing mounted data roots.
+With `SETTINGS_URL`, legacy `/maps/...` requests (MapLink) redirect to its parent CDN directory, preserving query strings.
 
 Optional alternatives, in precedence order:
 
